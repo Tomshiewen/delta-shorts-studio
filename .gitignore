@@ -23,3 +23,7 @@ draft_meta_info.json
 # 游戏画面衍生的截图与分析产物：版权原因不提交
 tmp/
 ref-analysis/
+
+# Python 编译产物
+__pycache__/
+*.pyc
