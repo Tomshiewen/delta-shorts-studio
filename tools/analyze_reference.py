@@ -29,7 +29,65 @@ def safe(v, d=0.0):
         return d
 
 
-def analyze(path, outdir, sheet_frames=15, max_frames=4000):
+def detect_content_box(cap, total, w, h, samples=40):
+    """
+    自动找出真正的画面区域，裁掉黑边与手机/播放器 UI。
+
+    为什么需要：屏幕录制类的"参考视频"里，静态 UI 与黑边会主导直方图，
+    导致切点检测全部失效（实测：一段 94 秒的录屏被误判为 0 个切点、
+    80% 像素是纯黑）。先裁掉外层，数字才有意义。
+    """
+    idxs = [int(round(x)) for x in np.linspace(0, max(total - 1, 0), samples)]
+    acc = None
+    used = 0
+    for k in idxs:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, k)
+        ok, fr = cap.read()
+        if not ok:
+            continue
+        g = cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        g = cv2.resize(g, (max(1, w // 4), max(1, h // 4)))
+        acc = g if acc is None else acc + g
+        used += 1
+    if acc is None or used == 0:
+        return (0, 0, w, h)
+    m = acc / used
+    rows = m.mean(axis=1)
+    cols = m.mean(axis=0)
+
+    def span(v):
+        """
+        找「最长连续亮区」，而不是「第一个亮到最后一个亮」。
+        后者会跨过中间的黑区：录屏里顶部状态栏 + 底部播放控件会把整帧都框进去，
+        真正的视频条就裁不出来（实测踩过）。
+        """
+        base = float(np.percentile(v, 92))
+        thr = max(8.0, base * 0.5)
+        mask = v > thr
+        best = (0, 0)
+        start = None
+        for i, b in enumerate(mask):
+            if b and start is None:
+                start = i
+            elif not b and start is not None:
+                if i - start > best[1] - best[0]:
+                    best = (start, i)
+                start = None
+        if start is not None and len(mask) - start > best[1] - best[0]:
+            best = (start, len(mask))
+        if best[1] - best[0] < max(4, int(len(v) * 0.05)):
+            return 0, len(v)
+        return best
+
+    r0, r1 = span(rows)
+    c0, c1 = span(cols)
+    sy = h / m.shape[0]
+    sx = w / m.shape[1]
+    return (int(c0 * sx), int(r0 * sy),
+            max(1, int((c1 - c0) * sx)), max(1, int((r1 - r0) * sy)))
+
+
+def analyze(path, outdir, sheet_frames=15, max_frames=4000, autocrop=True):
     if not os.path.exists(path):
         print(f"找不到文件：{path}")
         return 1
@@ -42,11 +100,21 @@ def analyze(path, outdir, sheet_frames=15, max_frames=4000):
 
     fps = safe(cap.get(cv2.CAP_PROP_FPS), 30.0) or 30.0
     total = int(safe(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
-    w = int(safe(cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
-    h = int(safe(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+    src_w = int(safe(cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
+    src_h = int(safe(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
     fourcc = int(safe(cap.get(cv2.CAP_PROP_FOURCC)))
     codec = "".join(chr((fourcc >> (8 * i)) & 0xFF) for i in range(4)).strip("\x00").strip()
     duration = total / fps if fps else 0.0
+
+    # 自动裁掉黑边 / 录屏 UI
+    w, h = src_w, src_h
+    box = None
+    if autocrop and total > 0:
+        cand = detect_content_box(cap, total, src_w, src_h)
+        if cand[2] * cand[3] < src_w * src_h * 0.92:
+            box = cand
+            w, h = cand[2], cand[3]
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     # 竖屏按 160x284、横屏按 284x160 归一化，便于统一比较
     size = (160, 284) if h >= w else (284, 160)
@@ -72,6 +140,8 @@ def analyze(path, outdir, sheet_frames=15, max_frames=4000):
         frames_read += 1
 
         if i % step == 0:
+            if box:
+                frame = frame[box[1]:box[1] + box[3], box[0]:box[0] + box[2]]
             small = cv2.resize(frame, size, interpolation=cv2.INTER_AREA)
             gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
             hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
@@ -152,6 +222,10 @@ def analyze(path, outdir, sheet_frames=15, max_frames=4000):
         "sizeMB": round(os.path.getsize(path) / 1048576, 2),
         "video": {
             "width": w, "height": h, "aspect": f"{w}:{h}",
+            "sourceSize": f"{src_w}x{src_h}",
+            "contentBox": ({"x": box[0], "y": box[1], "w": box[2], "h": box[3],
+                            "note": "自动裁掉的画面区域；其余是黑边/录屏 UI"}
+                           if box else None),
             "orientation": "竖屏" if h > w else ("横屏" if w > h else "方形"),
             "fps": round(fps, 2), "codec": codec,
             "totalFrames": total, "durationSec": round(duration, 2),
@@ -212,6 +286,7 @@ if __name__ == "__main__":
     ap.add_argument("path")
     ap.add_argument("--out", default=None)
     ap.add_argument("--frames", type=int, default=15)
+    ap.add_argument("--no-autocrop", action="store_true", help="不做黑边/UI 自动裁剪")
     a = ap.parse_args()
     out = a.out or os.path.join(os.path.dirname(os.path.abspath(a.path)), "ref-analysis")
-    sys.exit(analyze(a.path, out, a.frames))
+    sys.exit(analyze(a.path, out, a.frames, autocrop=not a.no_autocrop))
