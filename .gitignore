@@ -1,0 +1,25 @@
+# 凭据（绝不进版本库）
+.env
+*.token
+gh_token.txt
+
+# 大体积素材：本地保留，仓库只存 manifest 与缩略图
+assets/**/*.mp4
+assets/**/*.mov
+assets/**/*.wav
+assets/**/*.psd
+assets/**/thumbs/*.webp
+!assets/**/.gitkeep
+
+# 输出与草稿
+out/
+projects/*/draft/
+
+# 剪映草稿（由工具生成，体积大且含绝对路径）
+*.draft/
+draft_content.json
+draft_meta_info.json
+
+# ��Ϸ���������Ľ�ͼ����������Ȩԭ���ύ
+tmp/
+ref-analysis/

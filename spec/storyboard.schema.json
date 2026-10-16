@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Storyboard",
+  "description": "一条竖屏视频的分镜定义。合成层读取本文件生成剪映草稿；生成层读取 assets 字段决定要出哪些图。",
+  "type": "object",
+  "required": ["version", "id", "meta", "shots"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": "1.0.0" },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "description": "项目 id，与 projects/<id>/ 目录名一致"
+    },
+    "meta": {
+      "type": "object",
+      "required": ["title", "resolution", "fps", "totalDurationMs", "format"],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "resolution": {
+          "enum": ["1080x1920", "1920x1080"],
+          "description": "竖屏 1080x1920；中视频收益需 1920x1080 横屏且 ≥60000ms"
+        },
+        "fps": { "enum": [30, 60] },
+        "totalDurationMs": { "type": "integer", "minimum": 3000, "maximum": 600000 },
+        "format": {
+          "enum": ["vertical_short", "horizontal_mid"],
+          "description": "vertical_short=抖音短视频；horizontal_mid=中视频伙伴计划（横屏≥1分钟）"
+        },
+        "platform": { "enum": ["douyin", "xigua", "toutiao"] },
+        "monetization": {
+          "enum": ["none", "mid_video", "affiliate", "both"],
+          "description": "affiliate=挂车带货，会触发 commercialUse 检查"
+        },
+        "aiGenerated": { "type": "boolean", "default": true },
+        "aiLabelRequired": {
+          "type": "boolean",
+          "default": true,
+          "description": "抖音 AIGC 规范要求标识 AI 生成内容"
+        },
+        "hook": {
+          "type": "string",
+          "description": "前 3 秒要传达给观众的那一句话（用于复盘完播率）"
+        }
+      }
+    },
+    "shots": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/shot" }
+    }
+  },
+  "definitions": {
+    "shot": {
+      "type": "object",
+      "required": ["id", "durationMs", "intent"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^s[0-9]{2,3}$" },
+        "durationMs": { "type": "integer", "minimum": 300, "maximum": 60000 },
+        "intent": {
+          "enum": ["hook", "setup", "conflict", "turn", "payoff", "cta", "filler"],
+          "description": "这一镜的功能。filler 应尽量删掉——没功能的镜头就是流失点"
+        },
+        "assets": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "引用 assets/manifest.json 里的 asset id"
+        },
+        "requireGen": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "需要生成层新出的图/动画的提示词 id"
+        },
+        "camera": {
+          "enum": ["static", "push_in", "pull_out", "pan_left", "pan_right", "shake", "handheld", "orbit"]
+        },
+        "text": { "type": "string", "description": "屏幕字幕（竖屏请控制在 14 字以内/行）" },
+        "voiceover": { "type": "string" },
+        "sfx": { "type": "array", "items": { "type": "string" } },
+        "bgmCue": { "type": "string", "description": "BGM 段落提示，如 drop / build / cut" },
+        "transitionOut": { "enum": ["cut", "fade", "whip", "zoom", "glitch", "none"] },
+        "riskNote": { "type": "string", "description": "本镜的 IP/合规风险备注" },
+        "requiresCommercialSafe": {
+          "type": "boolean",
+          "default": false,
+          "description": "true 时合成层会拒绝引用 commercialUse != safe 的资产"
+        }
+      }
+    }
+  }
+}

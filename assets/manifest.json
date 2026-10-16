@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-10-16",
+  "conventions": {
+    "naming": "<type>_<subject>_<variant>_<version>.<ext>",
+    "hash": "sha256 取前 16 位",
+    "hardRule": "commercialUse = no 的资产禁止出现在挂购物车的视频里；合成层会检查并报错"
+  },
+  "stats": {
+    "total": 0,
+    "byType": {},
+    "reuseRateLast": null,
+    "note": "复用率 = 1 − (本视频新增资产数 ÷ 总引用资产数)。第 10 条视频目标 ≥ 60%，第 30 条 ≥ 80%。"
+  },
+  "assets": []
+}
