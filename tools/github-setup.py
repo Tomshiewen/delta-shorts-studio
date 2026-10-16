@@ -26,6 +26,13 @@ import sys
 import urllib.error
 import urllib.request
 
+# 保证中文在任何控制台都不乱码（Windows 控制台默认可能是 GBK）
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 API = "https://api.github.com"
 
